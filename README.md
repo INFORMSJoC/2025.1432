@@ -1,9 +1,13 @@
+[![INFORMS Journal on Computing Logo](https://INFORMSJoC.github.io/logos/INFORMS_Journal_on_Computing_Header.jpg)](https://pubsonline.informs.org/journal/ijoc)
+
 # Capacitated Assortment and price Optimization under the Mixed Multinominal Logit Model
 
-This repository contains exact and heuristic solution methods for assortment optimization problems under a discrete mixed multinomial logit (MMNL) choice model.
+This archive is distributed in association with the [INFORMS Journal on
+Computing](https://pubsonline.informs.org/journal/ijoc) under the [MIT License](LICENSE.txt).
 
-The code can generate synthetic instances, solve individual instances, and run larger numerical experiments. Instances are saved in as an `Input` object. Solver results are returned as `Result` objects containing the objective value, runtime, solver name, and further stats.
-
+The software and data in this repository are a snapshot of the software and data
+that were used in the research reported on the paper
+[Capacitated Assortment and price Optimization under the Mixed Multinominal Logit Model](https://doi.org/10.1287/ijoc.2025.1432) by Oliver Vetter, Niloufar Sadeghi, and Cornelia Schön.
 
 ## Cite
 
@@ -14,8 +18,8 @@ https://doi.org/10.1287/ijoc.2025.1432
 https://doi.org/10.1287/ijoc.2025.1432.cd
 
 Below is the BibTex for citing this snapshot of the repository.
-```bash
-@misc{CacheTest,
+```
+@misc{vetter2025,
   author =        {Oliver Vetter, Niloufar Sadeghi, Cornelia Schön},
   publisher =     {INFORMS Journal on Computing},
   title =         {Capacitated Assortment and price Optimization under the Mixed Multinominal Logit Model},
@@ -25,7 +29,6 @@ Below is the BibTex for citing this snapshot of the repository.
   note =          {Available for download at https://github.com/INFORMSJoC/2025.1432},
 }
 ```
-
 
 ## Repository structure
 
