@@ -42,6 +42,7 @@ Below is the BibTex for citing this snapshot of the repository.
 | `empiricalData/` | Input definitions for empirical instances. |
 | `amplModels/` | AMPL model files used by AMPL-based solvers. |
 | `numericalExperiment.py` | Creates and conducts numerical experiments. |
+| `experiments/` | Contains experiment data and results. A sample experiment with five representative instances is provided.|
 | `main.py` | File for testing purposes - currently configured to generate a random instance and solve it using several solvers. |
 | `amplStandalone` | Folder with a standalone ampl implementation in using mod and run files. This folder is independent of the python code and includes some code snippets that we used to get the exact solution as a verification method during experimental phase. An explanation to get it running can be found below. |
 
@@ -104,15 +105,15 @@ Use `numericalExperiment.py` to generate input
 files, conduct experiments, and save result data under the `experiments/`
 directory.
 
-The experiment script contains a example configurations near the bottom of the
+The `numericalExperiment.py` script contains a example configurations near the bottom of the
 file. Enable or adapt the required experiment configuration, then run:
 
 ```bash
 python numericalExperiment.py
 ```
 
-Experiment scripts may create output directories and log files in
-`experiments/`. Each created instance is saved in a .txt file in `__dict__` format. Additionally, the run experiment saves the solver logs, the results and an Excel containing all major statistics.
+The `numericalExperiment.py` may create output directories and log files in
+`experiments/`. Each created instance is saved in a `.txt` file in `__dict__` format. Additionally, the run experiment saves the solver logs, the results and an Excel containing all major statistics. Synthetic input generation uses a fixed random seed in `input.py` by default.
 
 Exemplary experiment setup:
 ```bash
@@ -131,7 +132,8 @@ createExperiment(name= 'medium_20_5', segmentsList=[20,50], priceLevelsList=[10]
 conductExperiment(name = 'medium_20_5', attributes = 3, attributeLevels = 3, products = 250, pldStructure = False)
 ```
 
-The git repository contains a small test experiment `test_experiment 250` with some sample files from the paper. The full list of instances is available upon request from the authors. Synthetic input generation uses a fixed random seed in `input.py` by default. To run the code you can use as stated in `main.py`:
+## Test experiment
+The experimental datasets used in the paper are not included in this repository because their total size exceeds several gigabytes. The data can be requested from the authors. To ensure reproducibility, the paper provides sufficient information to generate comparable test instances. In particular, the `createExperiment(...)` function can be used to recreate the underlying experiment structure. Additionally, this repository contains a sample test experiment `test_experiment 250` with some sample files from the paper. Running the experiment generates solver outputs for each method, detailed result files (`.txt`) for every instance-solver combination, and a consolidated Excel summary. To execute the sample experiment, run the command below (also provided in `main.txt`).
 
 ```bash
 numericalExperiment.conductExperiment(name = 'test_experiment', attributes= 1, attributeLevels= 1, products = 250, pldStructure = False)
