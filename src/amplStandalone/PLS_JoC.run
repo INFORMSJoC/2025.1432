@@ -1,0 +1,298 @@
+
+reset;
+
+
+#adjust output directory:
+param outdir symbolic := "./Models/";
+
+param summary_file_tsv symbolic := (outdir & "/PLS_JoC_summary_fixedparams_20seeds.tsv");
+param sol_file         symbolic := (outdir & "/PLS_JoC_solutions_fixedparams_20seeds.txt");
+
+
+
+##################################################
+# SETS AND EXPERIMENT DESIGN
+##################################################
+set CARD_GRID  := {5,10,15,20,25};
+set PRICE_GRID := {3,7,15,31};
+set SENS_GRID  := {0.1, 0.5, 1.0};
+
+set SEEDS := 1..20;
+
+##################################################
+# BASELINE STORAGE (price_levels = 3) + improvement
+##################################################
+param baseprofit{SEEDS, SENS_GRID, CARD_GRID} default 0;
+param rev_impr_pct default 0;
+
+##################################################
+# FILE HEADERS
+##################################################
+printf "seed\tprice_sens\tprice_levels\tcard\trandseed_used\ttime\tprofit\trev_impr_pct_vsK3\tsolve_result\tn_selected\tavg_price_selected\tbestbound\trelmipgap\tabsmipgap\n"
+  >> (summary_file_tsv);
+
+printf "===== Solutions (one block per solve) =====\n"
+  >> (sol_file);
+
+##################################################
+# SETS AND GRID
+##################################################
+param J_max := 25;
+param num_Cust := 5;
+param num_Pmax_max := 31;
+
+set J := 1..J_max;
+set I := 1..num_Cust;
+set S := 1..num_Pmax_max;
+
+##################################################
+# PRICE GRID: p_s = (10/32) * s, s=1..31
+##################################################
+param p_max := 10;
+param denom := 32;
+param pricestep := p_max / denom;
+
+param p{J,S};
+for {j in J, s in S} {
+  let p[j,s] := pricestep * s;
+}
+
+##################################################
+# MODEL PARAMETERS
+##################################################
+param num_products_max;
+param A{i in I, j in J, s in S};
+param C{i in I};
+param omega{i in I};
+param cost{j in J};
+
+param beta{i in I, j in J};
+param beta_price{i in I, j in J};
+
+param Amin{i in I};
+param Amax{i in I};
+
+param allowed{s in S} default 0;
+
+param nsel default 0;
+param avg_price_selected default 0;
+
+# gap/bound helpers
+param solve_status symbolic;
+param relgap default 0;
+param absgap default 0;
+param bbound default 0;
+
+##################################################
+# McCormick bounds params
+##################################################
+param v_max_0{i in I,j in J,s in S} default 1;
+param v_max_1{i in I,j in J,s in S} default 1;
+param v_min_0{i in I,j in J,s in S} default 0;
+param v_min_1{i in I,j in J,s in S} default 0;
+
+##################################################
+# LOAD MODEL
+##################################################
+#model PLS_JoC_Experiments_cost_uniformm.mod;
+model (outdir & "PLS_JoC_NS.mod");
+
+problem Conic_McCormick:
+  x,w,pi,v,u,
+  profit_linear,ChoiceProb_linear,marketsharesumtoone,
+  McCormick1,McCormick2,McCormick3,McCormick4,
+  OnlyOnePrice,MaxNumberOfProducts,
+  Conic1,Conic2,Conic3;
+
+##################################################
+# SOLVER SETTINGS
+##################################################
+#option solver gurobi;
+option solver "./gurobi";
+
+suffix relmipgap OUT;
+suffix absmipgap OUT;
+suffix bestbound OUT;
+
+option gurobi_options "outlev 1 timelimit 10000 mip:return_gap=3"; #mip:bestbound=1
+
+##################################################
+# SEED LOOP
+##################################################
+param randseed_used;
+
+for {seed in SEEDS} {
+
+  let randseed_used := 12345 + 97*seed;
+
+  ##################################################
+  # FIXED PARAMETERS FOR THIS SEED (draw once, reuse)
+  ##################################################
+  option randseed (randseed_used + 111);
+  let {i in I, j in J} beta[i,j] := Uniform(0,4);
+
+  let {i in I} omega[i] := 1 / card(I);
+
+  option randseed (randseed_used + 222);
+  let {j in J} cost[j] := Uniform(0,3);
+
+  ##################################################
+  # Log the seed’s fixed draws once
+  ##################################################
+  printf "\n============================================================\n" >> (sol_file);
+  printf "SEED=%d  randseed_base=%d\n", seed, randseed_used >> (sol_file);
+
+  # Costs
+  printf "Costs (fixed for this seed):\n" >> (sol_file);
+  printf {j in J} "  j=%d  cost=%.6f\n", j, cost[j] >> (sol_file);
+
+  # Betas
+  printf "Betas (fixed for this seed): beta[i,j]\n" >> (sol_file);
+  printf {i in I} "  segment i=%d:\n", i >> (sol_file);
+  printf {i in I, j in J} "    beta[%d,%d]=%.6f\n", i, j, beta[i,j] >> (sol_file);
+
+  printf "------------------------------------------------------------\n" >> (sol_file);
+
+  ##################################################
+  # LOOP over price sensitivity scenarios
+  ##################################################
+  for {sens in SENS_GRID} {
+
+    let {i in I, j in J} beta_price[i,j] := sens;
+
+    let {i in I, j in J, s in S} A[i,j,s] :=
+      exp(beta[i,j] - beta_price[i,j] * p[j,s]);
+
+    let {i in I} Amin[i] := min {j in J, s in S} A[i,j,s];
+    let {i in I} Amax[i] := max {j in J, s in S} A[i,j,s];
+
+    let {i in I} C[i] := (sum{j in J, s in S} A[i,j,s]) / (card(J) * card(S));
+
+    printf "price_sens=%.2f\n", sens >> (sol_file);
+    printf {i in I} "  segment=%d  Amin=%.6g  Amax=%.6g  C(meanA)=%.6g\n",
+      i, Amin[i], Amax[i], C[i] >> (sol_file);
+    printf "------------------------------------------------------------\n" >> (sol_file);
+
+    ##################################################
+    # LOOP over discretization sizes
+    ##################################################
+    for {Kprice in PRICE_GRID} {
+
+      let {s in S} allowed[s] :=
+        if Kprice = 31 then 1
+        else if Kprice = 3 then (if (s=1 or s=16 or s=31) then 1 else 0)
+        else if Kprice = 7 then (if (s=1 or s=8 or s=12 or s=16 or s=20 or s=24 or s=31) then 1 else 0)
+        else if Kprice = 15 then (if (s=1 or s=4 or s=6 or s=8 or s=10 or s=12 or s=14 or s=16
+                                      or s=18 or s=20 or s=22 or s=24 or s=26 or s=28 or s=31) then 1 else 0)
+        else 0;
+
+      ##################################################
+      # LOOP over cardinality values
+      ##################################################
+      for {Kcard in CARD_GRID} {
+
+        let num_products_max := Kcard;
+
+        # reset x
+        for {j in J, s in S} { fix x[j,s] := 0; }
+        for {j in J, s in S: allowed[s]=1} { unfix x[j,s]; }
+
+        ##################################################
+        # McCormick bounds
+        ##################################################
+        let {i in I,j in J,s in S} v_max_0[i,j,s] := 1/C[i];
+        let {i in I,j in J,s in S} v_max_1[i,j,s] := 1/(C[i]+A[i,j,s]);
+
+        let {i in I,j in J,s in S} v_min_0[i,j,s] :=
+          1/(C[i] + num_products_max * max{jj in J, ss in S: allowed[ss]=1} A[i,jj,ss]);
+
+        let {i in I,j in J,s in S} v_min_1[i,j,s] :=
+          1/(C[i] + A[i,j,s]
+             + (num_products_max-1) * max{jj in J, ss in S: jj<>j && allowed[ss]=1} A[i,jj,ss]);
+
+        ##################################################
+        # SOLVE
+        ##################################################
+        solve;
+
+        ##################################################
+        # STATUS + GAP
+        ##################################################
+        let solve_status :=
+          if solve_result = "solved" then "OPTIMAL"
+          else if solve_result = "limit" then "TIME_LIMIT"
+          else if solve_result = "infeasible" then "INFEASIBLE"
+          else if solve_result = "unbounded" then "UNBOUNDED"
+          else "OTHER";
+
+        let relgap := Conic_McCormick.relmipgap;
+        let absgap := Conic_McCormick.absmipgap;
+        let bbound := Conic_McCormick.bestbound;
+
+        if relgap >= 1e100 then { let relgap := -1; }
+        if absgap >= 1e100 then { let absgap := -1; }
+        if bbound >= 1e100 then { let bbound := -1; }
+
+        ##################################################
+        # Baseline profit storage (Kprice=3)
+        ##################################################
+        if Kprice = 3 then {
+          let baseprofit[seed, sens, Kcard] := profit_linear;
+        }
+
+        ##################################################
+        # n_selected and avg offered price
+        ##################################################
+        let nsel := sum{j in J, s in S} x[j,s];
+
+        let avg_price_selected :=
+          if nsel > 0 then (sum{j in J, s in S} p[j,s]*x[j,s]) / nsel else 0;
+
+        ##################################################
+        # Revenue improvement vs baseline (Kprice=3)
+        ##################################################
+        if Kprice = 3 then {
+          let rev_impr_pct := 0;
+        } else {
+          if baseprofit[seed, sens, Kcard] <> 0 then
+            let rev_impr_pct := 100 * (profit_linear - baseprofit[seed, sens, Kcard]) / baseprofit[seed, sens, Kcard];
+          else
+            let rev_impr_pct := 0;
+        }
+
+        ##################################################
+        # SUMMARY OUTPUT (TSV)
+        ##################################################
+        printf "%d\t%.2f\t%d\t%d\t%d\t%.2f\t%.6f\t%.6f\t%s\t%d\t%.6f\t%.6f\t%.6g\t%.6g\n",
+          seed, sens, Kprice, Kcard, randseed_used,
+          _solve_elapsed_time, profit_linear, rev_impr_pct,
+          solve_result,
+          nsel, avg_price_selected,
+          bbound, relgap, absgap
+          >> (summary_file_tsv);
+
+        ##################################################
+        # SOLUTION OUTPUT (text log)
+        ##################################################
+        printf "seed=%d  price_sens=%.2f  price_levels=%d  card=%d  time=%.2f  profit=%.6f  solve_result=%s  status=%s  bestbound=%.6f  relmipgap=%.6g  absmipgap=%.6g  n_selected=%d  avg_price=%.6f\n",
+          seed, sens, Kprice, Kcard,
+          _solve_elapsed_time, profit_linear,
+          solve_result, solve_status,
+          bbound, relgap, absgap,
+          nsel, avg_price_selected
+          >> (sol_file);
+
+        printf {j in J, s in S: x[j,s]=1}
+          "  product=%d  s=%d  price=%.4f  cost=%.4f\n",
+          j, s, p[j,s], cost[j]
+          >> (sol_file);
+
+        printf "------------------------------------------------------------\n" >> (sol_file);
+
+      } # Kcard
+    }   # Kprice
+  }     # sens
+
+} # seed
+
+printf "\n===== ALL EXPERIMENTS COMPLETED (20 SEEDS) =====\n";
